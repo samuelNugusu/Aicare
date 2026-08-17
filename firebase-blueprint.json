@@ -1,0 +1,102 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role-based access",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["client", "doctor", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastLogin": { "type": "string", "format": "date-time" },
+        "specialty": { "type": "string", "description": "For doctors only" },
+        "isVerified": { "type": "boolean", "description": "For doctors/admins" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "LabResult": {
+      "title": "Lab Result",
+      "description": "Uploaded lab result and its AI analysis",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "fileName": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "uploadDate": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "processing", "completed", "error", "failed", "verified"] },
+        "verifiedBy": { "type": "string", "description": "Doctor UID who verified the result" },
+        "performedBy": { "type": "string", "description": "Doctor UID who performed/reviewed the diagnosis" },
+        "rawText": { "type": "string" },
+        "analysis": {
+          "type": "object",
+          "properties": {
+            "summary": { "type": "string" },
+            "keyMetrics": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "marker": { "type": "string" },
+                  "value": { "type": "string" },
+                  "unit": { "type": "string" },
+                  "referenceRange": { "type": "string" },
+                  "status": { "type": "string", "enum": ["normal", "high", "low", "critical"] }
+                }
+              }
+            },
+            "recommendations": { "type": "array", "items": { "type": "string" } },
+            "predictiveAlerts": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      "required": ["userId", "fileName", "uploadDate", "status"]
+    },
+    "ChatMessage": {
+      "title": "Chat Message",
+      "description": "Message in a health assistant conversation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "model"] },
+        "content": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "role", "content", "timestamp"]
+    },
+    "HealthMetric": {
+      "title": "Health Metric",
+      "description": "Biometric data point tracking (e.g. weight, blood pressure)",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["weight", "blood_pressure_sys", "blood_pressure_dia", "heart_rate", "glucose", "steps", "height", "bmi"] },
+        "value": { "type": "number" },
+        "unit": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "value", "unit", "timestamp"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "users/{userId}/lab_results/{resultId}": {
+      "schema": "LabResult",
+      "description": "Lab results for a user"
+    },
+    "users/{userId}/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Chat history with the AI assistant"
+    },
+    "users/{userId}/metrics/{metricId}": {
+      "schema": "HealthMetric",
+      "description": "Vitals and biometric logs"
+    }
+  }
+}

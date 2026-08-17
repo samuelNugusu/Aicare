@@ -1,0 +1,135 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdminEmail() {
+      return isSignedIn() && request.auth.token.email in [
+        'sami478779@gmail.com',
+        'samuelnugusu7@gmail.com',
+        'afronexhub@gmail.com'
+      ];
+    }
+
+    function getUserRole(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data.role;
+    }
+
+    function isAdmin() {
+      return isAdminEmail() || (isSignedIn() && (
+        getUserRole(request.auth.uid) == 'ADMIN' || 
+        getUserRole(request.auth.uid) == 'admin'
+      ));
+    }
+
+    function isDoctor() {
+      return isSignedIn() && (
+        getUserRole(request.auth.uid) == 'DOCTOR' || 
+        getUserRole(request.auth.uid) == 'doctor'
+      );
+    }
+
+    function isPatient() {
+      return isSignedIn() && (
+        getUserRole(request.auth.uid) == 'PATIENT' || 
+        getUserRole(request.auth.uid) == 'patient' || 
+        getUserRole(request.auth.uid) == 'client'
+      );
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isDoctor() || isAdmin();
+      allow list: if isDoctor() || isAdmin();
+      
+      // On creation, users register as PATIENT (or ADMIN if in admin email whitelist)
+      allow create: if isOwner(userId) && (
+        request.resource.data.role in ['PATIENT', 'patient', 'client'] || 
+        (isAdminEmail() && request.resource.data.role in ['ADMIN', 'admin'])
+      );
+      
+      // Role updates can only be performed by Admins; Users can only update non-role profile fields
+      allow update: if isAdmin() || (
+        isOwner(userId) && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']) ||
+          request.resource.data.role == resource.data.role
+        )
+      );
+      
+      allow delete: if isAdmin();
+      
+      // Lab Results subcollection
+      match /lab_results/{resultId} {
+        allow read: if isOwner(userId) || isDoctor() || isAdmin();
+        allow create: if isOwner(userId) || isAdmin();
+        allow update: if isOwner(userId) || isDoctor() || isAdmin();
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+
+      // Messages subcollection
+      match /messages/{messageId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) || isAdmin();
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+
+      // Metrics subcollection
+      match /metrics/{metricId} {
+        allow read: if isOwner(userId) || isDoctor() || isAdmin();
+        allow write: if isOwner(userId) || isAdmin();
+      }
+
+      // User specific appointments
+      match /appointments/{appointmentId} {
+        allow read: if isOwner(userId) || isDoctor() || isAdmin();
+        allow write: if isOwner(userId) || isDoctor() || isAdmin();
+      }
+    }
+
+    // Root Appointments collection (for multi-role consultations)
+    match /appointments/{appointmentId} {
+      allow create: if isSignedIn() && (
+        request.resource.data.patientId == request.auth.uid || 
+        isAdmin() || 
+        isDoctor()
+      );
+      allow read, list: if isSignedIn() && (
+        isAdmin() || 
+        isDoctor() || 
+        resource.data.patientId == request.auth.uid || 
+        resource.data.doctorId == request.auth.uid
+      );
+      allow update: if isSignedIn() && (
+        isAdmin() || 
+        isDoctor() || 
+        resource.data.patientId == request.auth.uid || 
+        resource.data.doctorId == request.auth.uid
+      );
+      allow delete: if isSignedIn() && (
+        isAdmin() || 
+        resource.data.patientId == request.auth.uid
+      );
+    }
+
+    // Support collectionGroup queries for lab_results across doctors & admins
+    match /{path=**}/lab_results/{resultId} {
+      allow list, read: if isDoctor() || isAdmin();
+    }
+
+    // Support collectionGroup queries for metrics
+    match /{path=**}/metrics/{metricId} {
+      allow list, read: if isDoctor() || isAdmin();
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "AiCare - AI Health Diagnostics",
+  "description": "An enterprise-grade AI-powered health platform for lab analysis, predictive diagnostics, and personal health assistance.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}

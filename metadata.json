@@ -1,0 +1,11 @@
+{
+  "name": "AiCare Enterprise Health Platform",
+  "description": "An enterprise-grade, role-classified clinical health platform connecting patients, attending physicians, and administrators with AI lab diagnostics and certified clinical reviews.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
+
