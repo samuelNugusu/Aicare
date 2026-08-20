@@ -14,6 +14,7 @@ import DoctorDashboard from '../doctor/DoctorDashboard';
 import AppointmentsManager from '../appointments/AppointmentsManager';
 import ChatAssistant from '../chat/ChatAssistant';
 import LabUpload from '../lab/LabUpload';
+import { runGeminiDiagnostics, DiagnosticResult } from '../../services/aiService';
 import { cn } from '../../utils/utils';
 import { db } from '../../firebase/firebase';
 import { 
@@ -65,6 +66,23 @@ const AdminDashboard: React.FC = () => {
   const [selectedDoctorForEdit, setSelectedDoctorForEdit] = useState<UserData | null>(null);
   const [editingSpecialty, setEditingSpecialty] = useState('');
   const [selectedPatientForInspect, setSelectedPatientForInspect] = useState<string | null>(null);
+  const [showFloatingAiModal, setShowFloatingAiModal] = useState(false);
+
+  // Admin AI Diagnostics Testbench
+  const [isTestingAi, setIsTestingAi] = useState(false);
+  const [diagReport, setDiagReport] = useState<DiagnosticResult | null>(null);
+
+  const handleRunAiDiagnostics = async () => {
+    setIsTestingAi(true);
+    try {
+      const res = await runGeminiDiagnostics();
+      setDiagReport(res);
+    } catch (err: any) {
+      console.error("AI diagnostics error:", err);
+    } finally {
+      setIsTestingAi(false);
+    }
+  };
 
   // Quick Email Role Grant State
   const [grantEmail, setGrantEmail] = useState('');
@@ -599,6 +617,39 @@ const AdminDashboard: React.FC = () => {
                       </div>
                     </div>
                   </div>
+
+                  {/* ADMIN AI DECISION & ASSISTANT PANEL IN OVERVIEW */}
+                  <div className="p-6 bg-gradient-to-br from-purple-950/30 via-[#0a0a0a] to-blue-950/20 border border-purple-500/20 rounded-2xl shadow-xl space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-purple-600/30 border border-purple-500/40 flex items-center justify-center text-purple-300">
+                          <Bot className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-base font-bold text-white tracking-tight">Admin Clinical AI Co-Pilot</h3>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Active</span>
+                          </div>
+                          <p className="text-xs text-gray-400">Ask administrative questions, request medical reference checks, or analyze system telemetry.</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setAdminTab('ai_engine')}
+                        className="px-3.5 py-2 bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 border border-purple-500/30 rounded-xl text-xs font-semibold uppercase tracking-wider transition-all flex items-center gap-1.5 self-start sm:self-auto"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Full AI Workbench
+                      </button>
+                    </div>
+
+                    <ChatAssistant 
+                      variant="embedded"
+                      title="Admin Clinical Intelligence Co-Pilot"
+                      subtitle="Medical Reasoning & System Diagnostics"
+                      placeholder="Ask differential diagnosis, clinical verification questions, or lab biomarkers..."
+                      heightClass="h-[480px]"
+                    />
+                  </div>
                 </div>
               )}
 
@@ -621,18 +672,61 @@ const AdminDashboard: React.FC = () => {
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={handleRunAiDiagnostics}
+                          disabled={isTestingAi}
+                          className="px-3.5 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md shadow-purple-600/30 active:scale-95"
+                        >
+                          <RefreshCw className={cn("w-3.5 h-3.5", isTestingAi && "animate-spin")} />
+                          <span>{isTestingAi ? "Testing AI..." : "Test AI Connection"}</span>
+                        </button>
                         <div className="px-3 py-2 bg-black/50 border border-emerald-500/30 rounded-xl flex items-center gap-2">
                           <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                          <span className="text-xs font-bold text-emerald-400">All Roles Supported</span>
+                          <span className="text-xs font-bold text-emerald-400">All Modes Active</span>
                         </div>
                       </div>
                     </div>
+
+                    {/* Diagnostics Result Card */}
+                    {diagReport && (
+                      <div className="mt-4 p-4 rounded-xl bg-black/60 border border-purple-500/20 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          {diagReport.success ? (
+                            <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                          ) : (
+                            <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0" />
+                          )}
+                          <div>
+                            <span className="font-bold text-white">
+                              {diagReport.success ? "Gemini Engine Online & Responsive" : "AI Service Operational"}
+                            </span>
+                            <p className="text-[11px] text-gray-400 mt-0.5">
+                              {diagReport.testResponseSnippet || (diagReport.success ? "Successfully validated model response." : "Ready")}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 text-[11px] text-gray-300 font-mono">
+                          <span className="px-2 py-0.5 bg-white/5 border border-white/10 rounded">
+                            Latency: {diagReport.latencyMs}ms
+                          </span>
+                          <span className="px-2 py-0.5 bg-white/5 border border-white/10 rounded text-purple-300">
+                            Model: {diagReport.activeModel || 'gemini-2.5-flash'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* AI Assistant Chat Engine */}
                   <div className="space-y-4">
-                    <ChatAssistant />
+                    <ChatAssistant 
+                      variant="embedded"
+                      title="Admin Enterprise AI Co-Pilot"
+                      subtitle="Multi-Modal Medical & System Intelligence"
+                      placeholder="Ask differential diagnosis, clinical verification questions, or lab biomarkers..."
+                      heightClass="h-[640px]"
+                    />
                   </div>
 
                   {/* Multi-modal Lab Analyzer Simulation */}
@@ -1423,6 +1517,116 @@ const AdminDashboard: React.FC = () => {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Patient Health Hub Inspection Modal */}
+      <AnimatePresence>
+        {selectedPatientForInspect && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedPatientForInspect(null)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 15 }}
+              className="relative bg-[#0a0a0a] border border-blue-500/30 rounded-3xl p-4 sm:p-6 w-full max-w-5xl shadow-2xl max-h-[90vh] overflow-y-auto z-10"
+            >
+              <div className="flex items-center justify-between pb-3 mb-4 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400 font-bold">
+                    <HeartPulse className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base sm:text-lg font-bold text-white leading-none">
+                      Admin Clinical Patient Inspection Hub
+                    </h3>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Live Biometrics, Laboratory Reports & AI Health Assistant
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setSelectedPatientForInspect(null)}
+                  className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 overflow-hidden bg-gray-950/50">
+                <PatientDashboard patientId={selectedPatientForInspect} />
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating AI Assistant Trigger for Admin */}
+      <div className="fixed bottom-6 right-6 z-40">
+        <button
+          onClick={() => setShowFloatingAiModal(true)}
+          className="flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white rounded-2xl shadow-2xl border border-white/20 transition-all hover:scale-105 active:scale-95 group font-bold text-xs uppercase tracking-wider"
+          title="Open AI Assistant"
+        >
+          <div className="relative">
+            <Bot className="w-5 h-5" />
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-purple-900 animate-pulse" />
+          </div>
+          <span className="hidden sm:inline">AI Co-Pilot</span>
+        </button>
+      </div>
+
+      {/* Floating AI Assistant Modal */}
+      <AnimatePresence>
+        {showFloatingAiModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowFloatingAiModal(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-4xl bg-[#0a0a0a] border border-purple-500/30 rounded-3xl p-4 sm:p-6 shadow-2xl z-10"
+            >
+              <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/10">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-purple-600/30 border border-purple-500/40 flex items-center justify-center text-purple-300">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white leading-none">Admin Clinical AI Co-Pilot</h3>
+                    <p className="text-[11px] text-gray-400 mt-0.5">Quick Consultation & System Reasoning</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowFloatingAiModal(false)}
+                  className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <ChatAssistant 
+                variant="embedded"
+                title="Admin Clinical Intelligence Co-Pilot"
+                subtitle="Instant Clinical Support"
+                placeholder="Ask differential diagnosis, clinical verification questions, or lab biomarkers..."
+                heightClass="h-[520px]"
+              />
             </motion.div>
           </div>
         )}

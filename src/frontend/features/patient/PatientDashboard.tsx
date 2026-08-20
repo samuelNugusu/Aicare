@@ -247,7 +247,13 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ patientId }) => {
 
       {activeTab === 'chat' ? (
         <div className="space-y-4">
-          <ChatAssistant />
+          <ChatAssistant 
+            variant="embedded" 
+            title="AI Health Assistant" 
+            subtitle="Symptom Analysis & Wellness Guidance" 
+            placeholder="Ask about your symptoms, medications, or lab values..."
+            heightClass="h-[600px]" 
+          />
         </div>
       ) : activeTab === 'appointments' ? (
         <AppointmentsManager mode="patient" patientId={effectiveUserId} />

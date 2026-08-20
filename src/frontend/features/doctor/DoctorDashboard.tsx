@@ -552,7 +552,13 @@ const DoctorDashboard: React.FC = () => {
               </div>
             </div>
 
-            <ChatAssistant />
+            <ChatAssistant 
+              variant="embedded" 
+              title="AI Physician Clinical Co-Pilot" 
+              subtitle="Diagnostic Reasoning & Pharmacokinetics" 
+              placeholder="Ask differential diagnosis, contraindications, or biomarker analysis..."
+              heightClass="h-[620px]" 
+            />
           </div>
         )}
 
