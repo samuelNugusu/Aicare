@@ -87,10 +87,12 @@ Structure your answers clearly with:
 - Relevant Questions to Discuss with a Physician
 Always maintain professional medical terminology while keeping explanations accessible to the patient. Include a standard medical disclaimer.`;
 
-// Official Google GenAI models in priority order (validated active on free tier)
+// Official Google GenAI models in priority order
 const GEMINI_MODELS = [
   "gemini-3.7-flash",
-  "gemini-3.1-flash-lite"
+  "gemini-flash-latest",
+  "gemini-3.1-flash-lite",
+  "gemini-2.5-flash"
 ];
 
 function sleep(ms: number) {
@@ -118,45 +120,71 @@ async function generateWithGeminiFallback(options: {
   config?: any;
   overrideKey?: string;
 }) {
-  const ai = getGemini(options.overrideKey);
+  const primaryKey = getGeminiKey(options.overrideKey);
+  const fallbackEnvKey = (process.env.GEMINI_API_KEY || process.env.API_KEY || process.env.GOOGLE_API_KEY || "").trim();
+  const keysToTry = Array.from(new Set([primaryKey, fallbackEnvKey].filter(Boolean)));
+
+  if (keysToTry.length === 0) {
+    throw new Error("No Gemini API key configured.");
+  }
+
   let lastError: any = null;
 
-  for (const model of GEMINI_MODELS) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: options.contents,
-          config: options.config
-        });
-        return response;
-      } catch (err: any) {
-        lastError = err;
-        const errMsg = err?.message || JSON.stringify(err);
-        const isTransient = 
-          errMsg.includes("503") ||
-          errMsg.includes("429") ||
-          errMsg.includes("high demand") ||
-          errMsg.includes("UNAVAILABLE") ||
-          errMsg.includes("RESOURCE_EXHAUSTED");
-
-        if (isTransient && attempt === 0) {
-          await sleep(350);
-          continue;
+  for (const currentKey of keysToTry) {
+    let client: GoogleGenAI;
+    try {
+      client = new GoogleGenAI({
+        apiKey: currentKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
         }
+      });
+    } catch (clientErr) {
+      lastError = clientErr;
+      continue;
+    }
 
-        // Critical fatal errors like invalid API key should throw immediately
-        if (errMsg.includes("API key not valid") || errMsg.includes("PERMISSION_DENIED")) {
-          throw err;
+    for (const model of GEMINI_MODELS) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const response = await client.models.generateContent({
+            model,
+            contents: options.contents,
+            config: options.config
+          });
+          if (response && (response.text || (response as any).candidates?.length)) {
+            return response;
+          }
+        } catch (err: any) {
+          lastError = err;
+          const errMsg = (err?.message || JSON.stringify(err)).toLowerCase();
+          const isTransient = 
+            errMsg.includes("503") ||
+            errMsg.includes("429") ||
+            errMsg.includes("high demand") ||
+            errMsg.includes("unavailable") ||
+            errMsg.includes("resource_exhausted");
+
+          if (isTransient && attempt === 0) {
+            await sleep(350);
+            continue;
+          }
+
+          // If invalid key error, break to try next key in keysToTry
+          if (errMsg.includes("api key not valid") || errMsg.includes("permission_denied") || errMsg.includes("unregistered")) {
+            break;
+          }
+
+          // Model not found or unsupported -> try next model
+          break;
         }
-
-        // Proceed to next candidate model
-        break;
       }
     }
   }
 
-  throw lastError || new Error("All Gemini models are temporarily experiencing high demand. Please try again shortly.");
+  throw lastError || new Error("Unable to complete request with available Gemini models.");
 }
 
 /**

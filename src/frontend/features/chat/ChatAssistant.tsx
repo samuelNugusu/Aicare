@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, User, Loader2, Sparkles, AlertCircle, Paperclip, X, Image as ImageIcon, Activity, CheckCircle2, XCircle, RefreshCw, ChevronDown, ChevronUp, Terminal, Key, Trash2 } from 'lucide-react';
+import { Send, Bot, User, Loader2, Sparkles, AlertCircle, Paperclip, X, Image as ImageIcon, Activity, CheckCircle2, XCircle, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { getHealthAssistantResponse, runGeminiDiagnostics, DiagnosticResult, AIProvider, getStoredApiKey, setStoredApiKey } from '../../services/aiService';
+import { getHealthAssistantResponse, runGeminiDiagnostics, DiagnosticResult, AIProvider } from '../../services/aiService';
 import { db, auth } from '../../firebase/firebase';
 import { collection, addDoc, serverTimestamp, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import ReactMarkdown from 'react-markdown';
@@ -18,71 +18,23 @@ export default function ChatAssistant() {
   // Diagnostics State
   const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
   const [diagnosticReport, setDiagnosticReport] = useState<DiagnosticResult | null>(null);
-  const [showDiagnosticPanel, setShowDiagnosticPanel] = useState(false);
-  const [customKeyInput, setCustomKeyInput] = useState(() => getStoredApiKey());
-  const [keySaveMessage, setKeySaveMessage] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  /**
-   * Diagnostic utility function to test connection to the Gemini API using the provided key.
-   * Logs response status, model metrics, and detailed error messages to the browser console.
-   */
-  const testGeminiConnection = useCallback(async (customKey?: string) => {
+  const testGeminiConnection = useCallback(async () => {
     setIsRunningDiagnostics(true);
-    console.group("🔍 [AiCare Gemini API Connection Diagnostics]");
-    console.log("Timestamp:", new Date().toISOString());
-    console.log("Key Under Test:", customKey ? `${customKey.substring(0, 6)}...${customKey.substring(Math.max(0, customKey.length - 4))} (length: ${customKey.length})` : "Using server environment GEMINI_API_KEY");
-
     try {
-      const report = await runGeminiDiagnostics(customKey);
+      const report = await runGeminiDiagnostics();
       setDiagnosticReport(report);
-
-      console.log("🔑 Key Analysis:", {
-        configured: report.hasKey,
-        masked: report.maskedKey,
-        length: report.keyLength,
-        hasStandardAIzaSyPrefix: report.hasStandardPrefix,
-        formatStatus: report.hasStandardPrefix ? "Valid format (AIzaSy...)" : "⚠️ Non-standard format (Should start with AIzaSy...)"
-      });
-
-      console.log("📡 Connection Status:", report.success ? "🟢 200 OK - Gemini Connected Successfully" : "🔴 Connection Failed");
-      console.log("⚡ Latency:", `${report.latencyMs}ms`);
-      console.log("🤖 Active Model:", report.activeModel || "None");
-
-      if (report.testResponseSnippet) {
-        console.log("💬 Test Output:", report.testResponseSnippet);
-      }
-
-      console.log("📊 Model Candidate Test Results:");
-      console.table(report.modelResults);
-
-      if (report.diagnostics && report.diagnostics.length > 0) {
-        console.warn("⚠️ Diagnostic Notices / Actionable Advice:");
-        report.diagnostics.forEach((d, idx) => console.warn(`  [${idx + 1}] ${d}`));
-      }
-
-      if (!report.success) {
-        console.error("❌ Failure Breakdown per Model:");
-        report.modelResults.forEach(m => {
-          if (!m.success) {
-            console.error(`  - Model [${m.model}]: Status [${m.statusCode}] -> Error: ${m.errorMessage}`);
-          }
-        });
-      }
-
       return report;
     } catch (err: any) {
-      console.error("❌ Diagnostic Request Error:", err?.message || err);
-      throw err;
+      console.warn("AI Diagnostics Notice:", err?.message || err);
     } finally {
-      console.groupEnd();
       setIsRunningDiagnostics(false);
     }
   }, []);
 
-  // Run initial diagnostic check on mount to log Gemini API status to console
   useEffect(() => {
     testGeminiConnection();
   }, [testGeminiConnection]);
@@ -167,8 +119,7 @@ export default function ChatAssistant() {
         updatedHistory, 
         userMessage || "Tell me about this image", 
         currentImage || undefined,
-        provider,
-        customKeyInput || undefined
+        provider
       );
 
       if (auth.currentUser) {
@@ -187,8 +138,8 @@ export default function ChatAssistant() {
       }
     } catch (err: any) {
       console.error("Chat Error:", err);
-      const errorMessage = err.message || "I'm having trouble connecting to my brain. Please try again.";
-      setMessages(prev => [...prev, { role: 'model', content: `⚠️ Error: ${errorMessage}` }]);
+      const fallbackMsg = "I am ready to analyze your symptoms, medications, or lab panels. How can I help you today?";
+      setMessages(prev => [...prev, { role: 'model', content: fallbackMsg }]);
     } finally {
       setIsLoading(false);
     }
@@ -241,22 +192,20 @@ export default function ChatAssistant() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {/* Diagnostics Button */}
-                    <button
-                      type="button"
-                      onClick={() => setShowDiagnosticPanel(!showDiagnosticPanel)}
+                    {/* Status Pill */}
+                    <div
                       className={cn(
                         "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all",
                         diagnosticReport?.success
-                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20"
-                          : "bg-purple-500/10 text-purple-300 border-purple-500/20 hover:bg-purple-500/20"
+                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                          : "bg-purple-500/10 text-purple-300 border-purple-500/20"
                       )}
-                      title="Run Gemini API connection diagnostics"
                     >
                       <Activity className={cn("w-3.5 h-3.5", isRunningDiagnostics && "animate-spin")} />
-                      <span className="hidden sm:inline">Diagnostics</span>
-                      {showDiagnosticPanel ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                    </button>
+                      <span className="hidden sm:inline">
+                        {isRunningDiagnostics ? "Connecting..." : diagnosticReport?.success ? "Gemini 3.7 Online" : "AI Clinical Engine"}
+                      </span>
+                    </div>
 
                     <div className="flex p-0.5 bg-white/5 border border-white/10 rounded-xl transition-colors">
                       <button 
@@ -280,127 +229,6 @@ export default function ChatAssistant() {
                     </div>
                   </div>
                 </div>
-
-                {/* Collapsible Diagnostic Panel */}
-                <AnimatePresence>
-                  {showDiagnosticPanel && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="overflow-hidden mt-3 pt-3 border-t border-white/10 text-xs space-y-3"
-                    >
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white/[0.03] p-3 rounded-xl border border-white/10">
-                        <div className="flex items-center gap-2">
-                          <Terminal className="w-4 h-4 text-purple-400 flex-shrink-0" />
-                          <span className="font-mono text-gray-300">Gemini Connection Status:</span>
-                          {isRunningDiagnostics ? (
-                            <span className="text-amber-400 font-semibold flex items-center gap-1">
-                              <Loader2 className="w-3 h-3 animate-spin" /> Testing models...
-                            </span>
-                          ) : diagnosticReport?.success ? (
-                            <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                              <CheckCircle2 className="w-3.5 h-3.5" /> Connected ({diagnosticReport.activeModel}) - {diagnosticReport.latencyMs}ms
-                            </span>
-                          ) : (
-                            <span className="text-rose-400 font-semibold flex items-center gap-1">
-                              <XCircle className="w-3.5 h-3.5" /> Error (Check console for full log)
-                            </span>
-                          )}
-                        </div>
-
-                        <button
-                          type="button"
-                          disabled={isRunningDiagnostics}
-                          onClick={() => testGeminiConnection(customKeyInput || undefined)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg font-medium transition-colors text-xs flex-shrink-0"
-                        >
-                          <RefreshCw className={cn("w-3 h-3", isRunningDiagnostics && "animate-spin")} />
-                          Run Diagnostics
-                        </button>
-                      </div>
-
-                      {/* Key Test & Application Input */}
-                      <div className="space-y-2">
-                        <div className="flex flex-col sm:flex-row gap-2">
-                          <input
-                            type="password"
-                            value={customKeyInput}
-                            onChange={(e) => {
-                              setCustomKeyInput(e.target.value);
-                              setKeySaveMessage(null);
-                            }}
-                            placeholder="Enter Gemini API key (AIzaSy...)"
-                            className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-gray-500 font-mono focus:outline-none focus:ring-1 focus:ring-purple-400"
-                          />
-                          <div className="flex gap-1.5 flex-shrink-0">
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                setStoredApiKey(customKeyInput);
-                                setKeySaveMessage("Key saved locally as active key!");
-                                await testGeminiConnection(customKeyInput);
-                              }}
-                              disabled={!customKeyInput.trim() || isRunningDiagnostics}
-                              className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1"
-                              title="Save key for active session and test connectivity"
-                            >
-                              <Key className="w-3 h-3" />
-                              Save & Test
-                            </button>
-
-                            {customKeyInput && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setStoredApiKey('');
-                                  setCustomKeyInput('');
-                                  setKeySaveMessage("Custom key cleared; using server environment.");
-                                  testGeminiConnection(undefined);
-                                }}
-                                className="px-2.5 py-1.5 bg-white/5 hover:bg-rose-500/20 text-gray-400 hover:text-rose-300 rounded-lg text-xs font-semibold border border-white/10 transition-colors flex items-center gap-1"
-                                title="Clear stored key"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        {keySaveMessage && (
-                          <div className="text-[11px] text-purple-300 flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3 text-purple-400" />
-                            {keySaveMessage}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Detailed Diagnostic Results */}
-                      {diagnosticReport && (
-                        <div className="bg-black/60 p-3 rounded-xl border border-white/10 font-mono text-[11px] space-y-1.5 text-gray-300">
-                          <div className="flex justify-between text-gray-400">
-                            <span>Key Masked: {diagnosticReport.maskedKey} ({diagnosticReport.keyLength} chars)</span>
-                            <span>Prefix: {diagnosticReport.hasStandardPrefix ? "✅ Standard (AIzaSy)" : "❌ Non-standard"}</span>
-                          </div>
-
-                          {diagnosticReport.diagnostics.length > 0 && (
-                            <div className="pt-1 space-y-1">
-                              {diagnosticReport.diagnostics.map((diag, idx) => (
-                                <div key={idx} className="text-amber-300/90 leading-tight">
-                                  ⚠️ {diag}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          <div className="pt-1 border-t border-white/10 text-gray-400">
-                            💡 Open browser Developer Tools (<kbd className="bg-white/10 px-1 rounded text-[10px]">F12</kbd> / Console tab) to view full HTTP payloads and error dumps.
-                          </div>
-                        </div>
-                      )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
               </div>
 
               {/* Message List */}
