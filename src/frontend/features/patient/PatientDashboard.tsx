@@ -6,6 +6,7 @@ import { Activity, Clock, FileText, ChevronRight, Zap, UserCheck, X, ShieldCheck
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../utils/utils';
 import LabUpload from '../lab/LabUpload';
+import ChatAssistant from '../chat/ChatAssistant';
 import HealthMetrics from './HealthMetrics';
 import AnalysisResults from '../lab/AnalysisResults';
 import AppointmentsManager from '../appointments/AppointmentsManager';
@@ -22,7 +23,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ patientId }) => {
   const isViewingSelf = !patientId || patientId === user?.uid;
   const isDoctor = roleData?.role === 'doctor' || roleData?.role === 'DOCTOR';
   
-  const [activeTab, setActiveTab] = useState<'labs' | 'appointments'>('labs');
+  const [activeTab, setActiveTab] = useState<'labs' | 'chat' | 'appointments'>('labs');
   const [results, setResults] = useState<any[]>([]);
   const [diagnosisStats, setDiagnosisStats] = useState({ completed: 0, verified: 0, failed: 0 });
   const [doctors, setDoctors] = useState<any[]>([]);
@@ -203,11 +204,11 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ patientId }) => {
       </header>
 
       {/* Patient Tab Switcher */}
-      <div className="flex items-center gap-2 border-b border-white/10 pb-3">
+      <div className="flex items-center gap-2 border-b border-white/10 pb-3 overflow-x-auto">
         <button
           onClick={() => setActiveTab('labs')}
           className={cn(
-            "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all",
+            "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all whitespace-nowrap",
             activeTab === 'labs'
               ? "bg-blue-600 text-white shadow-md shadow-blue-600/30 border border-blue-400/30"
               : "text-gray-400 hover:text-white hover:bg-white/5"
@@ -218,9 +219,22 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ patientId }) => {
         </button>
 
         <button
+          onClick={() => setActiveTab('chat')}
+          className={cn(
+            "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all whitespace-nowrap",
+            activeTab === 'chat'
+              ? "bg-purple-600 text-white shadow-md shadow-purple-600/30 border border-purple-400/30"
+              : "text-gray-400 hover:text-white hover:bg-white/5"
+          )}
+        >
+          <Sparkles className="w-3.5 h-3.5 text-purple-300" />
+          AI Health Assistant
+        </button>
+
+        <button
           onClick={() => setActiveTab('appointments')}
           className={cn(
-            "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all",
+            "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all whitespace-nowrap",
             activeTab === 'appointments'
               ? "bg-blue-600 text-white shadow-md shadow-blue-600/30 border border-blue-400/30"
               : "text-gray-400 hover:text-white hover:bg-white/5"
@@ -231,7 +245,11 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ patientId }) => {
         </button>
       </div>
 
-      {activeTab === 'appointments' ? (
+      {activeTab === 'chat' ? (
+        <div className="space-y-4">
+          <ChatAssistant />
+        </div>
+      ) : activeTab === 'appointments' ? (
         <AppointmentsManager mode="patient" patientId={effectiveUserId} />
       ) : (
         <>

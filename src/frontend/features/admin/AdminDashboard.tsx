@@ -5,12 +5,15 @@ import {
   MoreHorizontal, UserPlus, Trash2, X, BarChart3, PieChart as PieChartIcon, 
   AlertCircle, ShieldCheck, ChevronRight, Search, TrendingUp, CheckCircle2,
   Stethoscope, Eye, Calendar, Key, Check, Server, Lock, Cpu, RefreshCw,
-  Mail, Sparkles, UserCheck, Award, ArrowRight, ShieldAlert, CheckCircle
+  Mail, Sparkles, UserCheck, Award, ArrowRight, ShieldAlert, CheckCircle,
+  UploadCloud, Bot, Zap, Terminal
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import PatientDashboard from '../patient/PatientDashboard';
 import DoctorDashboard from '../doctor/DoctorDashboard';
 import AppointmentsManager from '../appointments/AppointmentsManager';
+import ChatAssistant from '../chat/ChatAssistant';
+import LabUpload from '../lab/LabUpload';
 import { cn } from '../../utils/utils';
 import { db } from '../../firebase/firebase';
 import { 
@@ -52,7 +55,7 @@ const MEDICAL_SPECIALTIES = [
 const AdminDashboard: React.FC = () => {
   const { user, setActiveRole } = useAuth();
   const [view, setView] = useState<'admin' | 'doctor' | 'patient'>('admin');
-  const [adminTab, setAdminTab] = useState<'overview' | 'users' | 'doctors' | 'patients' | 'appointments' | 'system'>('overview');
+  const [adminTab, setAdminTab] = useState<'overview' | 'ai_engine' | 'users' | 'doctors' | 'patients' | 'appointments' | 'system'>('overview');
   
   const [users, setUsers] = useState<UserData[]>([]);
   const [emailRoles, setEmailRoles] = useState<EmailRoleAssignment[]>([]);
@@ -484,6 +487,7 @@ const AdminDashboard: React.FC = () => {
               <div className="flex items-center gap-2 border-b border-white/10 pb-3 overflow-x-auto">
                 {([
                   { id: 'overview', label: 'Telemetry & Stats', icon: BarChart3 },
+                  { id: 'ai_engine', label: 'AI Engine & Assistant', icon: Sparkles },
                   { id: 'users', label: `User Governance (${users.length})`, icon: Users },
                   { id: 'doctors', label: `Doctor Registry (${doctorsList.length + emailRoles.filter(e => e.role === 'DOCTOR' && !users.some(u => u.email?.toLowerCase() === e.email.toLowerCase())).length})`, icon: Stethoscope },
                   { id: 'patients', label: `Patient Directory (${patientsList.length})`, icon: HeartPulse },
@@ -594,6 +598,52 @@ const AdminDashboard: React.FC = () => {
                         ))}
                       </div>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB: AI ENGINE & ASSISTANT HUB */}
+              {adminTab === 'ai_engine' && (
+                <div className="space-y-6">
+                  {/* AI Status Banner */}
+                  <div className="p-6 bg-gradient-to-br from-purple-950/40 via-blue-950/30 to-black border border-purple-500/30 rounded-2xl shadow-2xl">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[11px] font-bold uppercase tracking-wider">
+                          <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                          Enterprise Clinical AI Intelligence Hub
+                        </div>
+                        <h2 className="text-xl font-bold text-white tracking-tight">
+                          Gemini 3.7 Medical Engine & Clinical Co-Pilot
+                        </h2>
+                        <p className="text-xs text-gray-300 max-w-2xl">
+                          Full administrative access to the multi-modal Gemini medical reasoning framework. Query clinical guidelines, test lab document extraction models, and monitor real-time AI API health across all user tiers.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <div className="px-3 py-2 bg-black/50 border border-emerald-500/30 rounded-xl flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                          <span className="text-xs font-bold text-emerald-400">All Roles Supported</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* AI Assistant Chat Engine */}
+                  <div className="space-y-4">
+                    <ChatAssistant />
+                  </div>
+
+                  {/* Multi-modal Lab Analyzer Simulation */}
+                  <div className="pt-6 border-t border-white/10 space-y-4">
+                    <div className="flex items-center gap-2">
+                      <UploadCloud className="w-4 h-4 text-blue-400" />
+                      <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                        Lab Document AI Vision Analyzer Testbench
+                      </h3>
+                    </div>
+                    <LabUpload />
                   </div>
                 </div>
               )}

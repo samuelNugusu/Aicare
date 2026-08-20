@@ -5,18 +5,20 @@ import { db } from '../../firebase/firebase';
 import { 
   Search, Clipboard, Calendar, MessageSquare, ExternalLink, Activity, Users, 
   AlertCircle, ChevronRight, HeartPulse, BarChart3, PieChart as PieChartIcon, 
-  Stethoscope, ShieldCheck, Clock, FileText, CheckCircle2, AlertTriangle, Eye, X, Filter 
+  Stethoscope, ShieldCheck, Clock, FileText, CheckCircle2, AlertTriangle, Eye, X, Filter, Sparkles, UploadCloud, Bot 
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import PatientDashboard from '../patient/PatientDashboard';
 import AnalysisResults from '../lab/AnalysisResults';
 import AppointmentsManager from '../appointments/AppointmentsManager';
+import ChatAssistant from '../chat/ChatAssistant';
+import LabUpload from '../lab/LabUpload';
 import { cn } from '../../utils/utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 const DoctorDashboard: React.FC = () => {
   const { user, roleData, setActiveRole, isAdmin, activeRole } = useAuth();
-  const [activeTab, setActiveTab] = useState<'queue' | 'appointments' | 'patients' | 'analytics'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'ai_consult' | 'lab_upload' | 'appointments' | 'patients' | 'analytics'>('queue');
   const [patients, setPatients] = useState<any[]>([]);
   const [labReviews, setLabReviews] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -254,6 +256,32 @@ const DoctorDashboard: React.FC = () => {
           >
             <Clipboard className="w-3.5 h-3.5" />
             Lab Review Queue ({stats.pending} Pending)
+          </button>
+
+          <button
+            onClick={() => setActiveTab('ai_consult')}
+            className={cn(
+              "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all whitespace-nowrap",
+              activeTab === 'ai_consult'
+                ? "bg-purple-600 text-white shadow-md shadow-purple-600/30 border border-purple-400/30"
+                : "text-gray-400 hover:text-white hover:bg-white/5"
+            )}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-300" />
+            AI Physician Co-Pilot
+          </button>
+
+          <button
+            onClick={() => setActiveTab('lab_upload')}
+            className={cn(
+              "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all whitespace-nowrap",
+              activeTab === 'lab_upload'
+                ? "bg-blue-600 text-white shadow-md shadow-blue-600/30 border border-blue-400/30"
+                : "text-gray-400 hover:text-white hover:bg-white/5"
+            )}
+          >
+            <UploadCloud className="w-3.5 h-3.5 text-blue-300" />
+            Scan / Analyze Lab
           </button>
 
           <button
@@ -501,6 +529,54 @@ const DoctorDashboard: React.FC = () => {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* TAB: AI PHYSICIAN CO-PILOT */}
+        {activeTab === 'ai_consult' && (
+          <div className="space-y-6">
+            <div className="bg-gradient-to-r from-purple-950/40 via-blue-950/30 to-black p-5 rounded-2xl border border-purple-500/30 shadow-xl">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-xl bg-purple-600/30 border border-purple-500/40 flex items-center justify-center text-purple-300">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                    AI Physician Clinical Co-Pilot
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">Gemini 3.7 Medical Engine</span>
+                  </h2>
+                  <p className="text-xs text-gray-400">
+                    Interactive clinical reasoning engine for complex differential diagnoses, pharmacokinetics & contraindications, biomarker analysis, and evidence-based guideline references.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <ChatAssistant />
+          </div>
+        )}
+
+        {/* TAB: SCAN / ANALYZE LAB RESULTS */}
+        {activeTab === 'lab_upload' && (
+          <div className="space-y-6">
+            <div className="bg-gradient-to-r from-blue-950/40 via-emerald-950/30 to-black p-5 rounded-2xl border border-blue-500/30 shadow-xl">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-xl bg-blue-600/30 border border-blue-500/40 flex items-center justify-center text-blue-300">
+                  <UploadCloud className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                    Physician Lab Document Diagnostic Scanner
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">Multi-Modal Vision Engine</span>
+                  </h2>
+                  <p className="text-xs text-gray-400">
+                    Upload and parse physical blood test sheets, metabolic panels, or pathology documents directly to extract structured biomarkers and generate automated clinical summaries.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <LabUpload />
           </div>
         )}
 
