@@ -39,6 +39,17 @@ export interface UserProfile {
   lastLogin?: any;
 }
 
+export interface EmailRoleAssignment {
+  id?: string;
+  email: string;
+  role: 'ADMIN' | 'DOCTOR' | 'PATIENT';
+  specialty?: string;
+  assignedBy?: string;
+  assignedAt?: any;
+  name?: string;
+  notes?: string;
+}
+
 export interface AppointmentRecord {
   id?: string;
   patientId: string;

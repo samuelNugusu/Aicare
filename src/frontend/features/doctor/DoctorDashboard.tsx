@@ -28,9 +28,14 @@ const DoctorDashboard: React.FC = () => {
 
   useEffect(() => {
     // Fetch patients
-    const q = query(collection(db, 'users'), where('role', '==', 'client'), limit(30));
+    const q = query(collection(db, 'users'), limit(50));
     const unsubscribePatients = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const list = snap.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as any))
+        .filter(u => {
+          const role = (u.role || '').toUpperCase();
+          return role === 'PATIENT' || role === 'CLIENT' || (!role && u.email);
+        });
       setPatients(list);
       setStats(s => ({ ...s, active: list.length }));
     }, (err) => console.warn("Doctor patients listener:", err));

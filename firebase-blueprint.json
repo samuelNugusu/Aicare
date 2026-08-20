@@ -79,12 +79,30 @@
         "timestamp": { "type": "string", "format": "date-time" }
       },
       "required": ["type", "value", "unit", "timestamp"]
+    },
+    "EmailRoleAssignment": {
+      "title": "Email Role Assignment",
+      "description": "Admin pre-assigned and granted roles mapped to email addresses",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["PATIENT", "DOCTOR", "ADMIN"] },
+        "specialty": { "type": "string" },
+        "assignedBy": { "type": "string" },
+        "assignedAt": { "type": "string", "format": "date-time" },
+        "name": { "type": "string" }
+      },
+      "required": ["email", "role"]
     }
   },
   "firestore": {
     "users/{userId}": {
       "schema": "User",
       "description": "User profiles"
+    },
+    "email_roles/{emailDocId}": {
+      "schema": "EmailRoleAssignment",
+      "description": "Admin role authorizations indexed by user email"
     },
     "users/{userId}/lab_results/{resultId}": {
       "schema": "LabResult",

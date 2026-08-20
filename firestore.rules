@@ -53,17 +53,23 @@ service cloud.firestore {
       allow get: if isOwner(userId) || isDoctor() || isAdmin();
       allow list: if isDoctor() || isAdmin();
       
-      // On creation, users register as PATIENT (or ADMIN if in admin email whitelist)
-      allow create: if isOwner(userId) && (
-        request.resource.data.role in ['PATIENT', 'patient', 'client'] || 
-        (isAdminEmail() && request.resource.data.role in ['ADMIN', 'admin'])
+      // On creation, users register as PATIENT (or ADMIN if in admin email whitelist, or role assigned in email_roles)
+      allow create: if isAdmin() || (
+        isOwner(userId) && (
+          request.resource.data.role in ['PATIENT', 'patient', 'client'] || 
+          (isAdminEmail() && request.resource.data.role in ['ADMIN', 'admin']) ||
+          (exists(/databases/$(database)/documents/email_roles/$(request.resource.data.email)) && 
+           get(/databases/$(database)/documents/email_roles/$(request.resource.data.email)).data.role == request.resource.data.role)
+        )
       );
       
-      // Role updates can only be performed by Admins; Users can only update non-role profile fields
+      // Role updates can be performed by Admins, or by user if matched to verified email_roles assignment
       allow update: if isAdmin() || (
         isOwner(userId) && (
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']) ||
-          request.resource.data.role == resource.data.role
+          request.resource.data.role == resource.data.role ||
+          (exists(/databases/$(database)/documents/email_roles/$(resource.data.email)) && 
+           get(/databases/$(database)/documents/email_roles/$(resource.data.email)).data.role == request.resource.data.role)
         )
       );
       
@@ -130,6 +136,12 @@ service cloud.firestore {
     // Support collectionGroup queries for metrics
     match /{path=**}/metrics/{metricId} {
       allow list, read: if isDoctor() || isAdmin();
+    }
+
+    // Email-based Role Authorizations (Admins can grant/revoke; signed-in users can read their authorization)
+    match /email_roles/{emailDocId} {
+      allow read: if isSignedIn();
+      allow write, create, update, delete: if isAdmin();
     }
   }
 }

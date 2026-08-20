@@ -4,7 +4,8 @@ import {
   Users, Shield, Settings, Activity, LayoutGrid, HeartPulse, 
   MoreHorizontal, UserPlus, Trash2, X, BarChart3, PieChart as PieChartIcon, 
   AlertCircle, ShieldCheck, ChevronRight, Search, TrendingUp, CheckCircle2,
-  Stethoscope, Eye, Calendar, Key, Check, Server, Lock, Cpu, RefreshCw
+  Stethoscope, Eye, Calendar, Key, Check, Server, Lock, Cpu, RefreshCw,
+  Mail, Sparkles, UserCheck, Award, ArrowRight, ShieldAlert, CheckCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import PatientDashboard from '../patient/PatientDashboard';
@@ -20,7 +21,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
   ResponsiveContainer, PieChart, Pie, Cell 
 } from 'recharts';
-import { ADMIN_EMAILS, normalizeRole, isAdminEmail } from '../../../shared/types';
+import { ADMIN_EMAILS, normalizeRole, isAdminEmail, EmailRoleAssignment } from '../../../shared/types';
 
 interface UserData {
   id: string;
@@ -33,18 +34,43 @@ interface UserData {
   createdAt?: any;
 }
 
+const MEDICAL_SPECIALTIES = [
+  'General Practice',
+  'Cardiology',
+  'Internal Medicine',
+  'Pediatrics',
+  'Hematology & Oncology',
+  'Neurology',
+  'Dermatology',
+  'Radiology & Imaging',
+  'Orthopedic Surgery',
+  'Pulmonology',
+  'Endocrinology',
+  'Emergency Medicine'
+];
+
 const AdminDashboard: React.FC = () => {
   const { user, setActiveRole } = useAuth();
   const [view, setView] = useState<'admin' | 'doctor' | 'patient'>('admin');
   const [adminTab, setAdminTab] = useState<'overview' | 'users' | 'doctors' | 'patients' | 'appointments' | 'system'>('overview');
   
   const [users, setUsers] = useState<UserData[]>([]);
+  const [emailRoles, setEmailRoles] = useState<EmailRoleAssignment[]>([]);
   const [stats, setStats] = useState({ total: 0, doctors: 0, clients: 0, admins: 0 });
   const [diagnosisStats, setDiagnosisStats] = useState({ completed: 0, verified: 0, failed: 0, total: 0 });
   const [showProvisionModal, setShowProvisionModal] = useState(false);
   const [selectedDoctorForEdit, setSelectedDoctorForEdit] = useState<UserData | null>(null);
   const [editingSpecialty, setEditingSpecialty] = useState('');
   const [selectedPatientForInspect, setSelectedPatientForInspect] = useState<string | null>(null);
+
+  // Quick Email Role Grant State
+  const [grantEmail, setGrantEmail] = useState('');
+  const [grantRole, setGrantRole] = useState<'DOCTOR' | 'PATIENT' | 'ADMIN'>('DOCTOR');
+  const [grantSpecialty, setGrantSpecialty] = useState('General Practice');
+  const [grantName, setGrantName] = useState('');
+  const [grantLoading, setGrantLoading] = useState(false);
+  const [grantSuccess, setGrantSuccess] = useState<string | null>(null);
+  const [grantError, setGrantError] = useState<string | null>(null);
 
   const [newUser, setNewUser] = useState({ 
     email: '', 
@@ -56,6 +82,7 @@ const AdminDashboard: React.FC = () => {
   const [roleFilter, setRoleFilter] = useState<'ALL' | 'ADMIN' | 'DOCTOR' | 'PATIENT'>('ALL');
 
   useEffect(() => {
+    // 1. Subscribe to users
     const q = query(collection(db, 'users'));
     const unsubscribeUsers = onSnapshot(q, (snap) => {
       const userList = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserData));
@@ -74,6 +101,16 @@ const AdminDashboard: React.FC = () => {
       console.error("Admin Users Fetch Error:", error);
     });
 
+    // 2. Subscribe to email_roles
+    const emailRolesQ = query(collection(db, 'email_roles'));
+    const unsubscribeEmailRoles = onSnapshot(emailRolesQ, (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as EmailRoleAssignment));
+      setEmailRoles(list);
+    }, (error) => {
+      console.warn("Email roles fetch warning:", error);
+    });
+
+    // 3. Subscribe to lab results
     const labQ = query(collectionGroup(db, 'lab_results'));
     const unsubscribeLabs = onSnapshot(labQ, (snap) => {
       const labCounts = snap.docs.reduce((acc, doc) => {
@@ -91,9 +128,87 @@ const AdminDashboard: React.FC = () => {
 
     return () => {
       unsubscribeUsers();
+      unsubscribeEmailRoles();
       unsubscribeLabs();
     };
   }, []);
+
+  const handleGrantEmailRole = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setGrantError(null);
+    setGrantSuccess(null);
+
+    const cleanEmail = grantEmail.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+      setGrantError('Please provide a valid email address.');
+      return;
+    }
+
+    setGrantLoading(true);
+    try {
+      const finalRole = isAdminEmail(cleanEmail) ? 'ADMIN' : grantRole;
+
+      // 1. Save to email_roles
+      await setDoc(doc(db, 'email_roles', cleanEmail), {
+        email: cleanEmail,
+        role: finalRole,
+        specialty: finalRole === 'DOCTOR' ? (grantSpecialty || 'General Practice') : null,
+        name: grantName.trim() || undefined,
+        assignedBy: user?.email || 'Admin',
+        assignedAt: new Date().toISOString()
+      }, { merge: true });
+
+      // 2. If a user account already exists with this email, immediately upgrade their role
+      const matchingUsers = users.filter(u => u.email?.toLowerCase().trim() === cleanEmail);
+      for (const mUser of matchingUsers) {
+        await updateDoc(doc(db, 'users', mUser.id), {
+          role: finalRole,
+          ...(finalRole === 'DOCTOR' ? { specialty: grantSpecialty || 'General Practice' } : {}),
+          isVerified: true,
+          updatedAt: new Date().toISOString()
+        });
+      }
+
+      setGrantSuccess(`Successfully granted ${finalRole} permissions to ${cleanEmail}! The user will have full access whenever they sign in.`);
+      setGrantEmail('');
+      setGrantName('');
+      setTimeout(() => setGrantSuccess(null), 6000);
+    } catch (err: any) {
+      console.error("Grant role error:", err);
+      setGrantError(err.message || "Failed to grant role. Please try again.");
+    } finally {
+      setGrantLoading(false);
+    }
+  };
+
+  const handleRevokeEmailRole = async (email: string) => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (isAdminEmail(cleanEmail)) {
+      alert("Cannot revoke permissions for a primary whitelisted Administrator.");
+      return;
+    }
+
+    if (!window.confirm(`Revoke special permissions for ${cleanEmail}? Account will revert to standard PATIENT status.`)) {
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, 'email_roles', cleanEmail));
+      
+      // Also downgrade any existing user profiles with this email
+      const matching = users.filter(u => u.email?.toLowerCase().trim() === cleanEmail);
+      for (const u of matching) {
+        await updateDoc(doc(db, 'users', u.id), {
+          role: 'PATIENT',
+          updatedAt: new Date().toISOString()
+        });
+      }
+      setGrantSuccess(`Permissions revoked for ${cleanEmail}. Reverted to PATIENT.`);
+      setTimeout(() => setGrantSuccess(null), 4000);
+    } catch (err) {
+      console.error("Failed to revoke email role:", err);
+    }
+  };
 
   const handleUpdateRole = async (userId: string, userEmail: string, newRole: string) => {
     const isWhitelisted = isAdminEmail(userEmail);
@@ -102,11 +217,25 @@ const AdminDashboard: React.FC = () => {
       return;
     }
 
+    const cleanEmail = userEmail.toLowerCase().trim();
+
     try {
+      // 1. Update user profile
       await updateDoc(doc(db, 'users', userId), { 
         role: newRole,
         updatedAt: new Date().toISOString()
       });
+
+      // 2. Also persist to email_roles so future logins maintain this permission
+      await setDoc(doc(db, 'email_roles', cleanEmail), {
+        email: cleanEmail,
+        role: newRole,
+        assignedBy: user?.email || 'Admin',
+        assignedAt: new Date().toISOString()
+      }, { merge: true });
+
+      setGrantSuccess(`Updated ${userEmail} role to ${newRole}`);
+      setTimeout(() => setGrantSuccess(null), 3000);
     } catch (err) {
       console.error("Failed to update role:", err);
     }
@@ -115,11 +244,20 @@ const AdminDashboard: React.FC = () => {
   const handleSaveDoctorSpecialty = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDoctorForEdit) return;
+    const cleanEmail = selectedDoctorForEdit.email.toLowerCase().trim();
+
     try {
       await updateDoc(doc(db, 'users', selectedDoctorForEdit.id), {
         specialty: editingSpecialty
       });
+      // Also sync to email_roles
+      await setDoc(doc(db, 'email_roles', cleanEmail), {
+        specialty: editingSpecialty
+      }, { merge: true });
+
       setSelectedDoctorForEdit(null);
+      setGrantSuccess(`Updated specialty for ${selectedDoctorForEdit.email}`);
+      setTimeout(() => setGrantSuccess(null), 3000);
     } catch (err) {
       console.error("Failed to update doctor specialty:", err);
     }
@@ -134,6 +272,9 @@ const AdminDashboard: React.FC = () => {
     if (!window.confirm(`Are you sure you want to terminate account access for ${userEmail}?`)) return;
     try {
       await deleteDoc(doc(db, 'users', userId));
+      // Also delete from email_roles if exists
+      const cleanEmail = userEmail.toLowerCase().trim();
+      await deleteDoc(doc(db, 'email_roles', cleanEmail)).catch(() => {});
     } catch (err) {
       console.error("Failed to delete user:", err);
     }
@@ -147,16 +288,31 @@ const AdminDashboard: React.FC = () => {
     const finalRole = isAdminEmail(cleanEmail) ? 'ADMIN' : newUser.role;
 
     try {
+      // 1. Create user document
       await setDoc(doc(db, 'users', tempUid), {
         email: cleanEmail,
         displayName: newUser.name,
         name: newUser.name,
         role: finalRole,
         specialty: finalRole === 'DOCTOR' ? (newUser.specialty || 'General Practice') : undefined,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        isVerified: true
       });
+
+      // 2. Create email_roles assignment so when user actually registers/logs in, role is preserved
+      await setDoc(doc(db, 'email_roles', cleanEmail), {
+        email: cleanEmail,
+        role: finalRole,
+        specialty: finalRole === 'DOCTOR' ? (newUser.specialty || 'General Practice') : undefined,
+        name: newUser.name,
+        assignedBy: user?.email || 'Admin',
+        assignedAt: new Date().toISOString()
+      }, { merge: true });
+
       setShowProvisionModal(false);
       setNewUser({ email: '', name: '', role: 'PATIENT', specialty: 'General Practice' });
+      setGrantSuccess(`Provisioned account and granted ${finalRole} role to ${cleanEmail}`);
+      setTimeout(() => setGrantSuccess(null), 4000);
     } catch (err) {
       console.error("Provisioning failed:", err);
     }
@@ -216,6 +372,43 @@ const AdminDashboard: React.FC = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-10 relative z-10">
+        {/* Feedback Alert Toast */}
+        <AnimatePresence>
+          {grantSuccess && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="p-4 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center justify-between gap-3 shadow-lg mb-6"
+            >
+              <div className="flex items-center gap-2.5">
+                <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span>{grantSuccess}</span>
+              </div>
+              <button onClick={() => setGrantSuccess(null)} className="text-emerald-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </motion.div>
+          )}
+
+          {grantError && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="p-4 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-semibold flex items-center justify-between gap-3 shadow-lg mb-6"
+            >
+              <div className="flex items-center gap-2.5">
+                <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+                <span>{grantError}</span>
+              </div>
+              <button onClick={() => setGrantError(null)} className="text-rose-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-6 mb-6 sm:mb-8">
           <div>
             <div className="flex items-center gap-2 text-amber-400 font-semibold tracking-wider text-[11px] sm:text-xs uppercase mb-1">
@@ -292,7 +485,7 @@ const AdminDashboard: React.FC = () => {
                 {([
                   { id: 'overview', label: 'Telemetry & Stats', icon: BarChart3 },
                   { id: 'users', label: `User Governance (${users.length})`, icon: Users },
-                  { id: 'doctors', label: `Doctor Registry (${doctorsList.length})`, icon: Stethoscope },
+                  { id: 'doctors', label: `Doctor Registry (${doctorsList.length + emailRoles.filter(e => e.role === 'DOCTOR' && !users.some(u => u.email?.toLowerCase() === e.email.toLowerCase())).length})`, icon: Stethoscope },
                   { id: 'patients', label: `Patient Directory (${patientsList.length})`, icon: HeartPulse },
                   { id: 'appointments', label: 'Consultations Schedule', icon: Calendar },
                   { id: 'system', label: 'RBAC Security & System Config', icon: Lock },
@@ -407,179 +600,408 @@ const AdminDashboard: React.FC = () => {
 
               {/* TAB 2: USER GOVERNANCE */}
               {adminTab === 'users' && (
-                <div className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-xl overflow-hidden">
-                  <div className="p-4 sm:p-6 border-b border-white/10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    <div>
-                      <h2 className="text-lg sm:text-xl font-bold tracking-tight">Role-Based Access Control Governance</h2>
-                      <p className="text-xs text-gray-400 mt-0.5">Assign, promote, or restrict roles: PATIENT, DOCTOR, or ADMIN.</p>
+                <div className="space-y-6">
+                  {/* HERO: Quick Email-Based Permission Grant Card */}
+                  <div className="p-6 bg-gradient-to-br from-blue-900/30 via-purple-900/20 to-black border border-blue-500/30 rounded-2xl shadow-2xl relative overflow-hidden">
+                    <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-6">
+                      <div className="space-y-2 max-w-xl">
+                        <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[11px] font-bold uppercase tracking-wider">
+                          <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                          Email-Based Role Authorization
+                        </div>
+                        <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                          Grant Doctor or Staff Permissions by Email
+                        </h2>
+                        <p className="text-xs text-gray-300 leading-relaxed">
+                          All new user accounts automatically default to <span className="text-blue-400 font-semibold">PATIENT</span>. As an Administrator, you can grant <span className="text-emerald-400 font-semibold">DOCTOR</span> features to any specific account using their email. When that user logs in or registers with that email, they immediately gain full clinical tools and patient review rights.
+                        </p>
+                      </div>
+
+                      {/* Role Summary Badges */}
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <div className="px-3 py-2 bg-black/40 border border-white/10 rounded-xl">
+                          <div className="text-gray-400 text-[10px] uppercase font-semibold">Default Role</div>
+                          <div className="font-bold text-blue-400">PATIENT (AI Diagnostic)</div>
+                        </div>
+                        <div className="px-3 py-2 bg-black/40 border border-emerald-500/30 rounded-xl">
+                          <div className="text-emerald-400/80 text-[10px] uppercase font-semibold">Admin-Grantable</div>
+                          <div className="font-bold text-emerald-400">DOCTOR (Lab & Vitals Review)</div>
+                        </div>
+                      </div>
                     </div>
-                    
-                    <div className="flex flex-wrap items-center gap-2.5">
-                      {/* Filter by role */}
-                      <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl text-xs">
-                        {(['ALL', 'PATIENT', 'DOCTOR', 'ADMIN'] as const).map((r) => (
+
+                    {/* Grant Form */}
+                    <form onSubmit={handleGrantEmailRole} className="mt-6 pt-6 border-t border-white/10 grid grid-cols-1 md:grid-cols-12 gap-3">
+                      {/* Email Field */}
+                      <div className="md:col-span-4 space-y-1">
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">User / Physician Email</label>
+                        <div className="relative">
+                          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                          <input
+                            type="email"
+                            required
+                            value={grantEmail}
+                            onChange={(e) => setGrantEmail(e.target.value)}
+                            placeholder="e.g. doctor.smith@hospital.com"
+                            className="w-full bg-black/60 border border-white/15 rounded-xl py-2.5 pl-9 pr-3 text-xs text-white placeholder:text-gray-500 focus:outline-none focus:border-blue-500 transition-all font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Role Picker */}
+                      <div className="md:col-span-3 space-y-1">
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">Target Role</label>
+                        <select
+                          value={grantRole}
+                          onChange={(e) => setGrantRole(e.target.value as any)}
+                          className={cn(
+                            "w-full bg-black/60 border rounded-xl py-2.5 px-3 text-xs font-bold outline-none transition-all cursor-pointer",
+                            grantRole === 'DOCTOR' ? "border-emerald-500/50 text-emerald-400" :
+                            grantRole === 'ADMIN' ? "border-amber-500/50 text-amber-400" :
+                            "border-blue-500/50 text-blue-400"
+                          )}
+                        >
+                          <option value="DOCTOR" className="bg-[#0a0a0a] text-emerald-400">DOCTOR (Clinical & Diagnostics)</option>
+                          <option value="PATIENT" className="bg-[#0a0a0a] text-blue-400">PATIENT (Default User)</option>
+                          <option value="ADMIN" className="bg-[#0a0a0a] text-amber-400">ADMIN (Full Governance)</option>
+                        </select>
+                      </div>
+
+                      {/* Doctor Specialty (if Doctor) */}
+                      {grantRole === 'DOCTOR' ? (
+                        <div className="md:col-span-3 space-y-1">
+                          <label className="block text-[11px] font-bold uppercase tracking-wider text-emerald-400">Specialty / Department</label>
+                          <select
+                            value={grantSpecialty}
+                            onChange={(e) => setGrantSpecialty(e.target.value)}
+                            className="w-full bg-black/60 border border-emerald-500/30 rounded-xl py-2.5 px-3 text-xs text-emerald-300 font-medium outline-none cursor-pointer"
+                          >
+                            {MEDICAL_SPECIALTIES.map(s => (
+                              <option key={s} value={s} className="bg-[#0a0a0a] text-white">{s}</option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <div className="md:col-span-3 space-y-1">
+                          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">Name / Notes (Optional)</label>
+                          <input
+                            type="text"
+                            value={grantName}
+                            onChange={(e) => setGrantName(e.target.value)}
+                            placeholder="Optional display name"
+                            className="w-full bg-black/60 border border-white/15 rounded-xl py-2.5 px-3 text-xs text-white placeholder:text-gray-500 focus:outline-none focus:border-blue-500 font-medium"
+                          />
+                        </div>
+                      )}
+
+                      {/* Action Button */}
+                      <div className="md:col-span-2 flex items-end">
+                        <button
+                          type="submit"
+                          disabled={grantLoading}
+                          className={cn(
+                            "w-full py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-lg active:scale-95",
+                            grantRole === 'DOCTOR'
+                              ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/30"
+                              : "bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/30"
+                          )}
+                        >
+                          {grantLoading ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <>
+                              <UserCheck className="w-3.5 h-3.5" />
+                              <span>Grant Role</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </form>
+
+                    {/* Quick Specialty Department Chips */}
+                    {grantRole === 'DOCTOR' && (
+                      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] text-gray-400 uppercase font-bold mr-1">Quick Presets:</span>
+                        {['Cardiology', 'Hematology & Oncology', 'Pediatrics', 'Neurology', 'Internal Medicine', 'General Practice'].map(dept => (
                           <button
-                            key={r}
-                            onClick={() => setRoleFilter(r)}
+                            type="button"
+                            key={dept}
+                            onClick={() => setGrantSpecialty(dept)}
                             className={cn(
-                              "px-2.5 py-1 rounded-lg font-semibold transition-all",
-                              roleFilter === r ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"
+                              "px-2.5 py-0.5 rounded-lg text-[10px] font-semibold transition-all",
+                              grantSpecialty === dept 
+                                ? "bg-emerald-500 text-black font-bold" 
+                                : "bg-white/5 hover:bg-white/10 text-gray-300"
                             )}
                           >
-                            {r}
+                            {dept}
                           </button>
                         ))}
                       </div>
-
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
-                        <input 
-                          type="text"
-                          placeholder="Search users..."
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          className="bg-white/5 border border-white/10 rounded-xl py-2 pl-8 pr-3 text-xs font-medium focus:outline-none focus:border-blue-500 transition-all placeholder:text-gray-500 w-48 sm:w-60"
-                        />
-                      </div>
-                      
-                      <button 
-                        onClick={() => setShowProvisionModal(true)}
-                        className="flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-xl font-semibold text-xs uppercase tracking-wider hover:bg-blue-700 transition-all shadow-md active:scale-95 flex-shrink-0"
-                      >
-                        <UserPlus className="w-3.5 h-3.5" />
-                        Provision Account
-                      </button>
-                    </div>
+                    )}
                   </div>
 
-                  {/* Table View */}
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                      <thead>
-                        <tr className="border-b border-white/5 text-xs font-semibold uppercase tracking-wider text-gray-400 bg-white/[0.01]">
-                          <th className="px-5 py-3.5">User Identity Profile</th>
-                          <th className="px-5 py-3.5">Current Role Classification</th>
-                          <th className="px-5 py-3.5">Account ID</th>
-                          <th className="px-5 py-3.5 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-white/5 text-xs">
-                        {filteredUsers.map((u) => {
-                          const norm = normalizeRole(u.role, u.email);
-                          const isWhitelistedAdmin = isAdminEmail(u.email);
+                  {/* Registered Users Table */}
+                  <div className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-xl overflow-hidden">
+                    <div className="p-4 sm:p-6 border-b border-white/10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                      <div>
+                        <h2 className="text-lg sm:text-xl font-bold tracking-tight">Active User Accounts Directory</h2>
+                        <p className="text-xs text-gray-400 mt-0.5">Manage permissions, update user roles dynamically, or revoke privileges.</p>
+                      </div>
+                      
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        {/* Filter by role */}
+                        <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl text-xs">
+                          {(['ALL', 'PATIENT', 'DOCTOR', 'ADMIN'] as const).map((r) => (
+                            <button
+                              key={r}
+                              onClick={() => setRoleFilter(r)}
+                              className={cn(
+                                "px-2.5 py-1 rounded-lg font-semibold transition-all",
+                                roleFilter === r ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"
+                              )}
+                            >
+                              {r}
+                            </button>
+                          ))}
+                        </div>
 
-                          return (
-                            <tr key={u.id} className="hover:bg-white/[0.02] transition-colors">
-                              <td className="px-5 py-3.5">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-white/10 flex items-center justify-center text-xs font-bold text-blue-400 flex-shrink-0">
-                                    {(u.displayName || u.name)?.[0]?.toUpperCase() || '?'}
-                                  </div>
-                                  <div className="min-w-0">
-                                    <div className="font-semibold text-white truncate max-w-[200px] flex items-center gap-1.5">
-                                      {u.displayName || u.name || 'User Member'}
-                                      {isWhitelistedAdmin && (
-                                        <span className="px-1.5 py-0.2 bg-amber-400/20 text-amber-300 text-[9px] rounded font-mono font-bold">
-                                          PRIMARY ADMIN
-                                        </span>
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+                          <input 
+                            type="text"
+                            placeholder="Search users..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="bg-white/5 border border-white/10 rounded-xl py-2 pl-8 pr-3 text-xs font-medium focus:outline-none focus:border-blue-500 transition-all placeholder:text-gray-500 w-48 sm:w-60"
+                          />
+                        </div>
+                        
+                        <button 
+                          onClick={() => setShowProvisionModal(true)}
+                          className="flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-xl font-semibold text-xs uppercase tracking-wider hover:bg-blue-700 transition-all shadow-md active:scale-95 flex-shrink-0"
+                        >
+                          <UserPlus className="w-3.5 h-3.5" />
+                          Provision Account
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Table View */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="border-b border-white/5 text-xs font-semibold uppercase tracking-wider text-gray-400 bg-white/[0.01]">
+                            <th className="px-5 py-3.5">User Identity Profile</th>
+                            <th className="px-5 py-3.5">Role Classification & Permissions</th>
+                            <th className="px-5 py-3.5">Authorization Source</th>
+                            <th className="px-5 py-3.5 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5 text-xs">
+                          {filteredUsers.map((u) => {
+                            const norm = normalizeRole(u.role, u.email);
+                            const isWhitelistedAdmin = isAdminEmail(u.email);
+                            const emailRoleEntry = emailRoles.find(e => e.email.toLowerCase() === u.email?.toLowerCase());
+
+                            return (
+                              <tr key={u.id} className="hover:bg-white/[0.02] transition-colors">
+                                <td className="px-5 py-3.5">
+                                  <div className="flex items-center gap-3">
+                                    <div className={cn(
+                                      "w-9 h-9 rounded-xl border flex items-center justify-center text-xs font-bold flex-shrink-0",
+                                      norm === 'DOCTOR' ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400" :
+                                      norm === 'ADMIN' ? "bg-amber-500/20 border-amber-500/30 text-amber-400" :
+                                      "bg-blue-500/20 border-blue-500/30 text-blue-400"
+                                    )}>
+                                      {(u.displayName || u.name)?.[0]?.toUpperCase() || '?'}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <div className="font-semibold text-white truncate max-w-[200px] flex items-center gap-1.5">
+                                        {u.displayName || u.name || 'User Member'}
+                                        {isWhitelistedAdmin && (
+                                          <span className="px-1.5 py-0.2 bg-amber-400/20 text-amber-300 text-[9px] rounded font-mono font-bold">
+                                            PRIMARY ADMIN
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="font-mono text-gray-500 truncate max-w-[200px]">{u.email}</div>
+                                      {norm === 'DOCTOR' && u.specialty && (
+                                        <div className="text-[10px] text-emerald-400/90 font-medium">Dept: {u.specialty}</div>
                                       )}
                                     </div>
-                                    <div className="font-mono text-gray-500 truncate max-w-[200px]">{u.email}</div>
                                   </div>
-                                </div>
-                              </td>
-                              <td className="px-5 py-3.5">
-                                {isWhitelistedAdmin ? (
-                                  <span className="px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg font-bold text-[11px] uppercase tracking-wider">
-                                    ADMIN (Whitelisted)
-                                  </span>
-                                ) : (
-                                  <select 
-                                    value={norm}
-                                    onChange={(e) => handleUpdateRole(u.id, u.email, e.target.value)}
-                                    className={cn(
-                                      "bg-white/5 border border-white/10 rounded-lg px-2.5 py-1 text-xs font-semibold cursor-pointer outline-none hover:border-blue-500/50 transition-all",
-                                      norm === 'ADMIN' ? "text-amber-400 border-amber-400/30" :
-                                      norm === 'DOCTOR' ? "text-emerald-400 border-emerald-400/30" :
-                                      "text-blue-400 border-blue-400/30"
-                                    )}
-                                  >
-                                    <option value="PATIENT" className="bg-[#0a0a0a]">PATIENT (Standard User)</option>
-                                    <option value="DOCTOR" className="bg-[#0a0a0a]">DOCTOR (Attending Medic)</option>
-                                    <option value="ADMIN" className="bg-[#0a0a0a]">ADMIN (Administrator)</option>
-                                  </select>
-                                )}
-                              </td>
-                              <td className="px-5 py-3.5 font-mono text-gray-500 truncate max-w-[120px]">{u.id}</td>
-                              <td className="px-5 py-3.5 text-right">
-                                <button 
-                                  onClick={() => handleDeleteUser(u.id, u.email)}
-                                  disabled={isWhitelistedAdmin}
-                                  className={cn(
-                                    "p-2 rounded-lg transition-all",
-                                    isWhitelistedAdmin ? "text-gray-700 cursor-not-allowed" : "hover:bg-rose-500/10 text-gray-500 hover:text-rose-400"
+                                </td>
+                                <td className="px-5 py-3.5">
+                                  {isWhitelistedAdmin ? (
+                                    <span className="px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg font-bold text-[11px] uppercase tracking-wider">
+                                      ADMIN (Whitelisted)
+                                    </span>
+                                  ) : (
+                                    <select 
+                                      value={norm}
+                                      onChange={(e) => handleUpdateRole(u.id, u.email, e.target.value)}
+                                      className={cn(
+                                        "bg-white/5 border rounded-lg px-2.5 py-1 text-xs font-semibold cursor-pointer outline-none hover:border-blue-500/50 transition-all",
+                                        norm === 'ADMIN' ? "text-amber-400 border-amber-400/30" :
+                                        norm === 'DOCTOR' ? "text-emerald-400 border-emerald-400/30" :
+                                        "text-blue-400 border-blue-400/30"
+                                      )}
+                                    >
+                                      <option value="PATIENT" className="bg-[#0a0a0a] text-blue-400">PATIENT (Default User)</option>
+                                      <option value="DOCTOR" className="bg-[#0a0a0a] text-emerald-400">DOCTOR (Attending Medic)</option>
+                                      <option value="ADMIN" className="bg-[#0a0a0a] text-amber-400">ADMIN (Administrator)</option>
+                                    </select>
                                   )}
-                                  title={isWhitelistedAdmin ? "Whitelisted admin cannot be deleted" : "Delete Record"}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                                </td>
+                                <td className="px-5 py-3.5">
+                                  {isWhitelistedAdmin ? (
+                                    <span className="text-[11px] text-amber-400 font-mono font-medium">Root Whitelist</span>
+                                  ) : emailRoleEntry ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 rounded text-[10px] font-semibold">
+                                      <Check className="w-3 h-3 text-emerald-400" />
+                                      Email Grant by {emailRoleEntry.assignedBy?.split('@')[0] || 'Admin'}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[11px] text-gray-500 font-mono">Standard Signup</span>
+                                  )}
+                                </td>
+                                <td className="px-5 py-3.5 text-right space-x-1">
+                                  {emailRoleEntry && !isWhitelistedAdmin && (
+                                    <button
+                                      onClick={() => handleRevokeEmailRole(u.email)}
+                                      className="px-2 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-lg text-[10px] font-bold uppercase transition-all"
+                                      title="Revoke email-granted role"
+                                    >
+                                      Revoke
+                                    </button>
+                                  )}
+                                  <button 
+                                    onClick={() => handleDeleteUser(u.id, u.email)}
+                                    disabled={isWhitelistedAdmin}
+                                    className={cn(
+                                      "p-2 rounded-lg transition-all",
+                                      isWhitelistedAdmin ? "text-gray-700 cursor-not-allowed" : "hover:bg-rose-500/10 text-gray-500 hover:text-rose-400"
+                                    )}
+                                    title={isWhitelistedAdmin ? "Whitelisted admin cannot be deleted" : "Delete Record"}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* TAB 3: DOCTOR MANAGEMENT */}
+              {/* TAB 3: DOCTOR REGISTRY & PRE-AUTHORIZATIONS */}
               {adminTab === 'doctors' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between px-1">
+                <div className="space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-1">
                     <div>
                       <h3 className="text-lg font-bold text-white flex items-center gap-2">
                         <Stethoscope className="w-5 h-5 text-emerald-500" />
                         Clinical Doctor Staff & Specialty Credentials
                       </h3>
-                      <p className="text-xs text-gray-400 mt-0.5">Manage physician credentials, assigned department specialties, and consultation permissions.</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Manage attending physicians, authorized doctor emails, and clinical verification rights.</p>
                     </div>
+
+                    <button
+                      onClick={() => {
+                        setAdminTab('users');
+                        setGrantRole('DOCTOR');
+                      }}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md shadow-emerald-600/30"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      + Authorize Doctor Email
+                    </button>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {/* 1. Active Registered Doctors */}
                     {doctorsList.map((docItem) => (
-                      <div key={docItem.id} className="p-5 bg-white/[0.03] border border-white/10 rounded-2xl space-y-4">
+                      <div key={docItem.id} className="p-5 bg-white/[0.03] border border-emerald-500/20 rounded-2xl space-y-4 shadow-lg">
                         <div className="flex items-center gap-3">
                           <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center font-bold text-emerald-400 text-lg flex-shrink-0">
                             {(docItem.displayName || docItem.name)?.[0]?.toUpperCase() || 'D'}
                           </div>
                           <div className="min-w-0">
-                            <h4 className="font-bold text-sm text-white truncate">{docItem.displayName || docItem.name || 'Dr. Attending'}</h4>
+                            <div className="flex items-center gap-1.5">
+                              <h4 className="font-bold text-sm text-white truncate">{docItem.displayName || docItem.name || 'Dr. Attending'}</h4>
+                              <span className="px-1.5 py-0.2 bg-emerald-500/20 text-emerald-400 text-[9px] rounded font-bold uppercase">Active</span>
+                            </div>
                             <p className="text-xs text-gray-400 font-mono truncate">{docItem.email}</p>
                             <span className="inline-block mt-1 px-2 py-0.5 bg-emerald-900/40 text-emerald-300 border border-emerald-700/40 rounded text-[10px] font-bold uppercase">
-                              {docItem.specialty || 'General Practitioner'}
+                              {docItem.specialty || 'General Practice'}
                             </span>
                           </div>
                         </div>
 
                         <div className="pt-2 border-t border-white/5 flex items-center justify-between">
-                          <span className="text-xs text-gray-500">Clinical Verification Rights: Active</span>
-                          <button
-                            onClick={() => {
-                              setSelectedDoctorForEdit(docItem);
-                              setEditingSpecialty(docItem.specialty || 'Cardiology & Internal Medicine');
-                            }}
-                            className="px-3 py-1 bg-white/5 hover:bg-white/10 text-white rounded-lg text-xs font-semibold"
-                          >
-                            Edit Specialty
-                          </button>
+                          <span className="text-[11px] text-emerald-400/80 font-medium">Verification Rights: Active</span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => {
+                                setSelectedDoctorForEdit(docItem);
+                                setEditingSpecialty(docItem.specialty || 'Cardiology');
+                              }}
+                              className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-white rounded-lg text-xs font-semibold"
+                            >
+                              Edit Dept
+                            </button>
+                            <button
+                              onClick={() => handleRevokeEmailRole(docItem.email)}
+                              className="px-2.5 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg text-xs font-semibold"
+                              title="Revoke doctor permissions"
+                            >
+                              Revoke
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}
 
-                    {doctorsList.length === 0 && (
+                    {/* 2. Pre-Authorized Doctor Emails (Not yet logged in or registered) */}
+                    {emailRoles
+                      .filter(e => e.role === 'DOCTOR' && !doctorsList.some(d => d.email.toLowerCase() === e.email.toLowerCase()))
+                      .map((preAuth) => (
+                        <div key={preAuth.email} className="p-5 bg-white/[0.02] border border-dashed border-emerald-500/40 rounded-2xl space-y-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center font-bold text-amber-400 text-lg flex-shrink-0">
+                              <Mail className="w-6 h-6" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <h4 className="font-bold text-sm text-white truncate">{preAuth.name || 'Pre-Authorized Doctor'}</h4>
+                                <span className="px-1.5 py-0.2 bg-amber-500/20 text-amber-300 text-[9px] rounded font-bold uppercase">Pre-Authorized</span>
+                              </div>
+                              <p className="text-xs text-gray-400 font-mono truncate">{preAuth.email}</p>
+                              <span className="inline-block mt-1 px-2 py-0.5 bg-emerald-900/40 text-emerald-300 border border-emerald-700/40 rounded text-[10px] font-bold uppercase">
+                                {preAuth.specialty || 'General Practice'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t border-white/5 flex items-center justify-between">
+                            <span className="text-[11px] text-amber-400/80 font-medium">Awaiting Login Activation</span>
+                            <button
+                              onClick={() => handleRevokeEmailRole(preAuth.email)}
+                              className="px-2.5 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg text-xs font-semibold"
+                            >
+                              Cancel Authorization
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+
+                    {doctorsList.length === 0 && emailRoles.filter(e => e.role === 'DOCTOR').length === 0 && (
                       <div className="col-span-3 text-center py-12 bg-white/[0.02] border border-dashed border-white/10 rounded-2xl">
-                        <p className="text-gray-400 text-xs">No doctors currently registered. Promote a user to DOCTOR in the User Governance tab.</p>
+                        <p className="text-gray-400 text-xs">No doctors currently authorized. Grant DOCTOR permissions by email above.</p>
                       </div>
                     )}
                   </div>
@@ -665,6 +1087,65 @@ const AdminDashboard: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* Active Email-Based Roles Registry */}
+                  <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-5 sm:p-6">
+                    <h3 className="text-base font-bold text-white mb-1 flex items-center gap-2">
+                      <UserCheck className="w-4 h-4 text-emerald-400" />
+                      Active Email-Based Role Assignments Database (`email_roles`)
+                    </h3>
+                    <p className="text-xs text-gray-400 mb-4">
+                      Every email registered here overrides default PATIENT behavior upon login.
+                    </p>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="border-b border-white/5 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                            <th className="py-2.5 px-3">Email Address</th>
+                            <th className="py-2.5 px-3">Granted Role</th>
+                            <th className="py-2.5 px-3">Specialty / Notes</th>
+                            <th className="py-2.5 px-3">Assigned By</th>
+                            <th className="py-2.5 px-3 text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5 text-xs">
+                          {emailRoles.map((er) => (
+                            <tr key={er.email}>
+                              <td className="py-2.5 px-3 font-mono text-white font-medium">{er.email}</td>
+                              <td className="py-2.5 px-3">
+                                <span className={cn(
+                                  "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
+                                  er.role === 'DOCTOR' ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" :
+                                  er.role === 'ADMIN' ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" :
+                                  "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                                )}>
+                                  {er.role}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 text-gray-300">{er.specialty || er.name || '—'}</td>
+                              <td className="py-2.5 px-3 text-gray-400 font-mono text-[11px]">{er.assignedBy || 'Admin'}</td>
+                              <td className="py-2.5 px-3 text-right">
+                                <button
+                                  onClick={() => handleRevokeEmailRole(er.email)}
+                                  className="text-rose-400 hover:text-rose-300 text-[11px] font-semibold"
+                                >
+                                  Revoke
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                          {emailRoles.length === 0 && (
+                            <tr>
+                              <td colSpan={5} className="py-4 text-center text-gray-500 text-xs">
+                                No custom email role assignments created yet.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
                   {/* Security Architecture Status */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="p-5 bg-white/[0.03] border border-white/10 rounded-2xl space-y-2">
@@ -674,7 +1155,7 @@ const AdminDashboard: React.FC = () => {
                       </div>
                       <h4 className="font-bold text-sm text-white">Rule Enforced RBAC</h4>
                       <p className="text-xs text-gray-400">
-                        Admin email whitelist and user role verification baked directly into `firestore.rules`.
+                        Admin email whitelist and `email_roles` verification baked into security rules.
                       </p>
                     </div>
 
@@ -685,7 +1166,7 @@ const AdminDashboard: React.FC = () => {
                       </div>
                       <h4 className="font-bold text-sm text-white">New User → PATIENT</h4>
                       <p className="text-xs text-gray-400">
-                        Zero self-elevation vulnerabilities. All new signups automatically enter as Patients.
+                        All new signups enter as Patients unless their email is pre-granted Doctor or Admin permissions.
                       </p>
                     </div>
 
