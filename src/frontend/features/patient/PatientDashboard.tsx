@@ -17,10 +17,10 @@ interface PatientDashboardProps {
 }
 
 const PatientDashboard: React.FC<PatientDashboardProps> = ({ patientId }) => {
-  const { user, roleData } = useAuth();
+  const { user, roleData, setActiveRole, isAdmin, activeRole } = useAuth();
   const effectiveUserId = patientId || user?.uid;
   const isViewingSelf = !patientId || patientId === user?.uid;
-  const isDoctor = roleData?.role === 'doctor';
+  const isDoctor = roleData?.role === 'doctor' || roleData?.role === 'DOCTOR';
   
   const [activeTab, setActiveTab] = useState<'labs' | 'appointments'>('labs');
   const [results, setResults] = useState<any[]>([]);
@@ -112,10 +112,13 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ patientId }) => {
   }, [effectiveUserId]);
 
   useEffect(() => {
-    // Find all doctors in the system
-    const q = query(collection(db, 'users'), where('role', '==', 'doctor'), limit(3));
+    // Find all doctors in the system (handling both uppercase and lowercase)
+    const q = query(collection(db, 'users'), limit(50));
     return onSnapshot(q, (snap) => {
-      setDoctors(snap.docs.map(doc => doc.data()));
+      const docs = snap.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as any))
+        .filter(u => (u.role || '').toUpperCase() === 'DOCTOR');
+      setDoctors(docs.slice(0, 3));
     });
   }, []);
 
@@ -127,6 +130,36 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ patientId }) => {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 sm:space-y-8 transition-colors duration-300">
+      {/* Admin Simulation Banner */}
+      {isAdmin && (
+        <div className="p-3 sm:p-4 bg-gradient-to-r from-amber-950/40 via-blue-950/30 to-black border border-amber-500/40 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xl">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 flex-shrink-0">
+              <ShieldCheck className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-xs font-bold text-amber-300">System Administrator Active Mode: Patient Portal</span>
+              <p className="text-[11px] text-gray-400">You are experiencing the patient dashboard with live lab uploads, biometric logs, and appointment booking.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              onClick={() => setActiveRole('ADMIN')}
+              className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Return to Admin Console
+            </button>
+            <button
+              onClick={() => setActiveRole('DOCTOR')}
+              className="px-3 py-1.5 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/40 text-xs font-semibold uppercase tracking-wider rounded-xl transition-all cursor-pointer"
+            >
+              Doctor View
+            </button>
+          </div>
+        </div>
+      )}
+
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 px-1">
         <div>
            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-blue-400 mb-1">

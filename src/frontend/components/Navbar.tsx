@@ -4,12 +4,13 @@ import { useAuth } from '../firebase/AuthProvider';
 import { useTheme } from '../utils/ThemeContext';
 import { auth } from '../firebase/firebase';
 import { signOut } from 'firebase/auth';
-import { Activity, LogIn, User as UserIcon, LayoutDashboard, Sun, Moon, Menu, X } from 'lucide-react';
+import { Activity, LogIn, User as UserIcon, LayoutDashboard, Sun, Moon, Menu, X, Shield, Stethoscope, HeartPulse } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { cn } from '../utils/utils';
 import AuthModal from './AuthModal';
 
 export default function Navbar() {
-  const { user, activeRole, isAdmin } = useAuth();
+  const { user, activeRole, setActiveRole, isAdmin } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -80,6 +81,33 @@ export default function Navbar() {
 
         {/* Right Section: Theme Toggle + User Info / Auth */}
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+          {/* Admin Perspective Mode Selector Pill */}
+          {user && isAdmin && (
+            <div className="hidden lg:flex items-center gap-1 bg-white/5 border border-amber-500/30 p-1 rounded-xl">
+              <span className="text-[9px] font-bold text-amber-400 uppercase tracking-wider px-1.5 flex items-center gap-1">
+                <Shield className="w-3 h-3 text-amber-400" /> Mode:
+              </span>
+              {(['ADMIN', 'DOCTOR', 'PATIENT'] as const).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => {
+                    setActiveRole(r);
+                    navigate('/dashboard');
+                  }}
+                  className={cn(
+                    "px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all",
+                    activeRole === r 
+                      ? (r === 'ADMIN' ? "bg-amber-500 text-black shadow-sm" : r === 'DOCTOR' ? "bg-emerald-500 text-black shadow-sm" : "bg-blue-600 text-white shadow-sm")
+                      : "text-gray-400 hover:text-white hover:bg-white/10"
+                  )}
+                  title={`Switch active perspective to ${r}`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          )}
+
           <button
             onClick={toggleTheme}
             className="p-2 sm:p-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 transition-all"
@@ -210,6 +238,35 @@ export default function Navbar() {
                       Sign Out
                     </button>
                   </div>
+
+                  {isAdmin && (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-2 text-left">
+                      <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Shield className="w-3.5 h-3.5" />
+                        Admin Perspective Mode:
+                      </span>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {(['ADMIN', 'DOCTOR', 'PATIENT'] as const).map((r) => (
+                          <button
+                            key={r}
+                            onClick={() => {
+                              setActiveRole(r);
+                              setIsMobileMenuOpen(false);
+                              navigate('/dashboard');
+                            }}
+                            className={cn(
+                              "py-1.5 px-2 rounded-lg text-xs font-bold uppercase tracking-wider text-center transition-all",
+                              activeRole === r 
+                                ? (r === 'ADMIN' ? "bg-amber-500 text-black" : r === 'DOCTOR' ? "bg-emerald-500 text-black" : "bg-blue-600 text-white")
+                                : "bg-white/5 text-gray-400 hover:text-white"
+                            )}
+                          >
+                            {r}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="pt-2">

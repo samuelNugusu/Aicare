@@ -15,7 +15,7 @@ import { cn } from '../../utils/utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 const DoctorDashboard: React.FC = () => {
-  const { user, roleData, setActiveRole } = useAuth();
+  const { user, roleData, setActiveRole, isAdmin, activeRole } = useAuth();
   const [activeTab, setActiveTab] = useState<'queue' | 'appointments' | 'patients' | 'analytics'>('queue');
   const [patients, setPatients] = useState<any[]>([]);
   const [labReviews, setLabReviews] = useState<any[]>([]);
@@ -162,6 +162,36 @@ const DoctorDashboard: React.FC = () => {
     <div className="min-h-screen bg-[#050505] text-white transition-colors duration-300 pb-16">
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8">
         
+        {/* Admin Simulation Banner */}
+        {isAdmin && (
+          <div className="mb-6 p-3 sm:p-4 bg-gradient-to-r from-amber-950/40 via-purple-950/30 to-black border border-amber-500/40 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xl">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 flex-shrink-0">
+                <ShieldCheck className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-amber-300">System Administrator Active Mode: Attending Doctor</span>
+                <p className="text-[11px] text-gray-400">You are operating in the clinical doctor workspace with full diagnostic review capabilities.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button
+                onClick={() => setActiveRole('ADMIN')}
+                className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                Return to Admin Console
+              </button>
+              <button
+                onClick={() => setActiveRole('PATIENT')}
+                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold uppercase tracking-wider rounded-xl transition-all cursor-pointer"
+              >
+                Patient View
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Physician Role Header */}
         <header className="mb-6 sm:mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4 px-1">
           <div>
