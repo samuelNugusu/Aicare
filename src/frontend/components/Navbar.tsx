@@ -12,6 +12,7 @@ export default function Navbar() {
   const { user, activeRole, isAdmin } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -117,17 +118,20 @@ export default function Navbar() {
               </div>
             </div>
           ) : (
-            <div className="hidden sm:block">
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => setIsAuthOpen(true)}
-                className="flex items-center gap-1.5 bg-blue-600 text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm"
-              >
-                <LogIn className="w-4 h-4" />
-                Get Started
-              </motion.button>
-            </div>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              type="button"
+              id="nav-auth-btn"
+              onClick={() => {
+                setAuthMode('login');
+                setIsAuthOpen(true);
+              }}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-md shadow-blue-600/20 cursor-pointer"
+            >
+              <LogIn className="w-4 h-4" />
+              <span>Get Started</span>
+            </motion.button>
           )}
 
           {/* Mobile Menu Toggle Button */}
@@ -210,11 +214,14 @@ export default function Navbar() {
               ) : (
                 <div className="pt-2">
                   <button 
+                    type="button"
+                    id="mobile-nav-auth-btn"
                     onClick={() => {
                       setIsMobileMenuOpen(false);
+                      setAuthMode('login');
                       setIsAuthOpen(true);
                     }}
-                    className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2"
+                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 transition-colors cursor-pointer text-sm"
                   >
                     <LogIn className="w-4 h-4" />
                     Get Started
@@ -226,7 +233,7 @@ export default function Navbar() {
         )}
       </AnimatePresence>
       
-      <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
+      <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} initialMode={authMode} />
     </nav>
   );
 }
